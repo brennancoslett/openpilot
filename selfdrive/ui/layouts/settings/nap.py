@@ -119,6 +119,17 @@ class NAPLayout(Widget):
       needs_reboot=True,
     )
 
+    # Not offroad-gated and no reboot needed: carcontroller.py reads this
+    # live every tick, so it can be flipped on mid-drive after watching a
+    # dry run's logged decisions ("VisionACC would press ...") look sane.
+    self._add_toggle(
+      NAPParamKeys.VISION_ACC_LIVE_TX,
+      "Vision ACC Live (Transmit)",
+      "Actually send Vision ACC's stalk-button decisions to the car instead of just logging "
+      "them. Has no effect unless Vision ACC is enabled. Takes effect immediately, even "
+      "while driving — verify a dry run's logged decisions look correct first.",
+    )
+
     self._add_toggle(
       NAPParamKeys.ADAPTIVE_ACCEL,
       "Adaptive Accel Limits",
@@ -311,8 +322,10 @@ class NAPLayout(Widget):
 
     def on_toggle(state, k=param_key):
       self._params.put_bool(k, state)
-      # Onroad toggles (only VISION_ACC is not offroad-gated) apply at the
-      # next ignition cycle — never offer a reboot while driving.
+      # Onroad toggles (VISION_ACC and VISION_ACC_LIVE_TX are not offroad-
+      # gated) apply at the next ignition cycle — never offer a reboot
+      # while driving. VISION_ACC_LIVE_TX doesn't pass needs_reboot at all:
+      # carcontroller.py reads it live every tick.
       if needs_reboot and ui_state.is_offroad():
         self._show_reboot_modal()
 

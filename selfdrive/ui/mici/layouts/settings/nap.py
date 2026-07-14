@@ -81,6 +81,12 @@ class NAPLayoutMici(NavScroller):
     vision_acc = BigParamControl("vision acc (no pedal)", NAPParamKeys.VISION_ACC,
                                  toggle_callback=_reboot_on_toggle_offroad_only)
 
+    # No reboot callback at all — carcontroller.py reads this live every
+    # tick, so it can be flipped on mid-drive after watching a dry run's
+    # logged decisions ("VisionACC would press ...") look sane. Has no
+    # effect unless vision_acc is also enabled.
+    vision_acc_live_tx = BigParamControl("vision acc live (transmit)", NAPParamKeys.VISION_ACC_LIVE_TX)
+
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 
     # ── Pedal hardware ───────────────────────────────
@@ -179,6 +185,7 @@ class NAPLayoutMici(NavScroller):
     self._scroller.add_widgets([
       pedal_enabled,
       vision_acc,
+      vision_acc_live_tx,
       adaptive_accel,
       pedal_can_bus,
       pedal_calib_status,
