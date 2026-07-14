@@ -108,6 +108,17 @@ class NAPLayout(Widget):
     )
 
     self._add_toggle(
+      NAPParamKeys.VISION_ACC,
+      "Vision ACC (No Pedal)",
+      "Follow openpilot's planned speed by nudging the stock cruise control set speed "
+      "(vision-based lead following, no pedal hardware). Deceleration is regen-only — "
+      "no friction brakes — and cruise only works above ~18 mph. You are the brakes. "
+      "Ignored when the pedal interceptor is enabled. Requires reboot.",
+      enabled=ui_state.is_offroad,
+      needs_reboot=True,
+    )
+
+    self._add_toggle(
       NAPParamKeys.ADAPTIVE_ACCEL,
       "Adaptive Accel Limits",
       "Reduces acceleration authority when close to a lead car to prevent overshoot. Full accel on open road or when closing a large gap.",

@@ -67,6 +67,12 @@ class NAPLayoutMici(NavScroller):
                                      toggle_callback=_reboot_on_toggle)
     pedal_enabled.set_enabled(ui_state.is_offroad)
 
+    # Vision ACC: stock-CC set-speed modulation, no pedal hardware.
+    # Regen-only decel, works above ~18 mph only. Ignored when pedal enabled.
+    vision_acc = BigParamControl("vision acc (no pedal)", NAPParamKeys.VISION_ACC,
+                                 toggle_callback=_reboot_on_toggle)
+    vision_acc.set_enabled(ui_state.is_offroad)
+
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 
     # ── Pedal hardware ───────────────────────────────
@@ -164,6 +170,7 @@ class NAPLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       pedal_enabled,
+      vision_acc,
       adaptive_accel,
       pedal_can_bus,
       pedal_calib_status,
