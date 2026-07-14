@@ -77,6 +77,7 @@ class UIState:
     self.panda_type: log.PandaState.PandaType = log.PandaState.PandaType.unknown
     self.personality: log.LongitudinalPersonality = log.LongitudinalPersonality.standard
     self.has_longitudinal_control: bool = False
+    self.vision_acc_enabled: bool = False
     self.CP: car.CarParams | None = None
     self.light_sensor: float = -1.0
     self._param_update_time: float = 0.0
@@ -185,6 +186,9 @@ class UIState:
         self.has_longitudinal_control = self.params.get_bool("AlphaLongitudinalEnabled")
       else:
         self.has_longitudinal_control = self.CP.openpilotLongitudinalControl
+    # Raw key, not an import of NAPParamKeys (Tesla-pre-AP-specific) — matches
+    # this file's existing convention of reading settings by literal key.
+    self.vision_acc_enabled = self.params.get_bool("NAPVisionACCEnabled")
     self._param_update_time = time.monotonic()
 
 

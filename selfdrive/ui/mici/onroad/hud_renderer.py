@@ -223,7 +223,13 @@ class HudRenderer(Widget):
 
   def _draw_set_speed(self, rect: rl.Rectangle) -> None:
     """Draw the MAX speed indicator box."""
-    alpha = self._set_speed_alpha_filter.update(0 < rl.get_time() - self._set_speed_changed_time < SET_SPEED_PERSISTENCE and
+    # Vision ACC (no pedal) modulates set speed via spoofed stalk presses,
+    # and the stock cluster's own set-speed readout blanks after ~1s of no
+    # change — the driver's only persistent view of the current target is
+    # this HUD element, so don't let it fade the way it does for a normal
+    # ACC car with its own always-on cluster readout.
+    recently_changed = 0 < rl.get_time() - self._set_speed_changed_time < SET_SPEED_PERSISTENCE
+    alpha = self._set_speed_alpha_filter.update((recently_changed or ui_state.vision_acc_enabled) and
                                                 self._can_draw_top_icons and self._engaged)
     if alpha < 1e-2:
       return
