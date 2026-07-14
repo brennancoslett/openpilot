@@ -38,6 +38,13 @@ def _reboot_on_toggle(_):
   _reboot_dialog()
 
 
+def _reboot_on_toggle_offroad_only(_):
+  # For toggles usable onroad: the change applies at the next ignition
+  # cycle anyway, so never offer a reboot while driving.
+  if ui_state.is_offroad():
+    _reboot_dialog()
+
+
 def _confirm_then_flash(slider_title: str, runner_title: str, instructions: str, module: str):
   """Slide-to-confirm dialog before launching a destructive EPAS script.
 
@@ -69,9 +76,10 @@ class NAPLayoutMici(NavScroller):
 
     # Vision ACC: stock-CC set-speed modulation, no pedal hardware.
     # Regen-only decel, works above ~18 mph only. Ignored when pedal enabled.
+    # Not offroad-gated: the flag is only read at fingerprint time, so an
+    # onroad toggle safely takes effect at the next ignition cycle.
     vision_acc = BigParamControl("vision acc (no pedal)", NAPParamKeys.VISION_ACC,
-                                 toggle_callback=_reboot_on_toggle)
-    vision_acc.set_enabled(ui_state.is_offroad)
+                                 toggle_callback=_reboot_on_toggle_offroad_only)
 
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 

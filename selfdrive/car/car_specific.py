@@ -103,8 +103,10 @@ class CarSpecificEvents:
           # Pedal mode: refuse to engage until the Comma Pedal is calibrated.
           # Without calibration, INTERCEPTOR_GAS values sit near the press
           # threshold and produce gasPressedOverride chatter that blocks engage.
+          # Vision ACC also runs with pcmCruise=False but has no pedal, so
+          # gate on the pedal actually being the longitudinal actuator.
           from opendbc.car.tesla.preap.nap_conf import nap_conf
-          if not nap_conf.pedal_calibrated:
+          if nap_conf.use_pedal and not nap_conf.pedal_calibrated:
             events.add(EventName.pedalNotCalibrated)
 
     return events
