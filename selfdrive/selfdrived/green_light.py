@@ -2,7 +2,8 @@
 
 Source: sunnypilot/selfdrive/controls/lib/e2e_alerts_helper.py (MIT).
 No camera traffic-light classifier — an end-to-end proxy. While the car is
-stopped and openpilot is disengaged:
+stopped and openpilot is not doing longitudinal control (disengaged or
+lateral-only — on this fork you drop out of ACC to stop at a light):
   - green light: the model's planned path endpoint opens up past
     GREEN_LIGHT_X_THRESHOLD, i.e. the model "wants to go"
   - lead departure: a close lead pulls away by LEAD_DEPART_DIST_THRESHOLD
@@ -61,9 +62,9 @@ class GreenLightHelper:
     moving = not CS.standstill and CS.vEgo > 0.1
     if moving:
       self.last_moving_frame = self.frame
-    recent_moving = self.last_moving_frame == -1 or (self.frame - self.last_moving_frame) * DT_CTRL < 2.0
+    recent_moving = self.last_moving_frame != -1 and (self.frame - self.last_moving_frame) * DT_CTRL < 2.0
 
-    self.allowed = not moving and not CS.gasPressed and not CC.enabled and not recent_moving
+    self.allowed = not moving and not CS.gasPressed and not CC.longActive and not recent_moving
 
     # Green Light Alert
     green_light_trigger = False

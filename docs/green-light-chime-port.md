@@ -45,9 +45,13 @@ There is no camera-based traffic light classifier. It is an end-to-end proxy:
    `LEAD_DEPART_DIST_THRESHOLD = 1.0`, `TRIGGER_TIMER_THRESHOLD = 0.3`.
    One adaptation: sunnypilot runs this at the 20 Hz planner rate (`DT_MDL`);
    selfdrived loops at 100 Hz, so all frame timers use `DT_CTRL` instead.
-   Sunnypilot quirk kept intentionally: the alert never arms until the car
-   has moved at least once after boot (`last_moving_frame == -1` counts as
-   recently-moving), so no chime on the first stop after startup.
+   Two deliberate departures from sunnypilot:
+   - the engagement gate is `not CC.longActive` instead of `not CC.enabled`,
+     so the chime also works while lateral-only engaged — on this fork you
+     drop out of ACC to stop at a light, so lateral often stays on;
+   - sunnypilot's boot quirk (never arms until the car has moved once after
+     startup, via `last_moving_frame == -1` counting as recently-moving) is
+     removed — the first stop after boot can chime.
 
 2. **Event enum** — `cereal/log.capnp`: add `greenLightChime` (and optionally
    `leadDepartChime`) to `OnroadEvent.EventName`, next ordinal after the
@@ -80,9 +84,10 @@ There is no camera-based traffic light classifier. It is an end-to-end proxy:
 
 ## Fork-specific caveats
 
-- Chimes only while **disengaged** — matches sitting at a light on the pre-AP
-  vision-ACC setup. The `not CC.enabled` gate could be relaxed to
-  "engaged but at standstill" later if desired.
+- Chimes whenever openpilot is **not doing longitudinal control**
+  (`not CC.longActive`): fully disengaged or lateral-only. On the pre-AP
+  vision-ACC setup there is no true stopping capability, so you always drop
+  out of ACC to stop at a light while lateral may stay engaged.
 - The no-lead gate uses `radarState.leadOne`; if the pre-AP Bosch radar lead
   is flaky at standstill, fall back to `modelV2.leadsV3`.
 - E2e proxy means occasional false chimes (path opens for reasons other than

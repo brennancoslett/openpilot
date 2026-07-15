@@ -210,7 +210,7 @@ class SelfdriveD:
       else:
         self.prev_pedal_long_active = False
 
-      # Green light / lead departure chimes (only active while disengaged)
+      # Green light / lead departure chimes (active unless op-long is controlling)
       green_light, lead_depart = self.green_light_helper.update(CS, self.sm)
       if green_light:
         self.events.add(EventName.greenLightChime)

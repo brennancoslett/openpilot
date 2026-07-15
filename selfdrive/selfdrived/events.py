@@ -1064,8 +1064,8 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: NormalPermanentAlert("Arm Stock Cruise to Enable Speed Control"),
   },
 
-  # Green light / lead departure chimes fire while disengaged, so they must
-  # be ET.PERMANENT (the only alert type active in the disabled state).
+  # Green light / lead departure chimes fire while disengaged or lateral-only,
+  # so they must be ET.PERMANENT (the only alert type active in the disabled state).
   EventName.greenLightChime: {
     ET.PERMANENT: Alert(
       "Green Light",
