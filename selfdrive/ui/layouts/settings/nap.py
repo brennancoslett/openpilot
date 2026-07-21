@@ -107,15 +107,16 @@ class NAPLayout(Widget):
       needs_reboot=True,
     )
 
-    # Not offroad-gated: the flag is only read at fingerprint time, so an
-    # onroad toggle safely takes effect at the next ignition cycle.
+    # Read at fingerprint time, so it needs a reboot to take effect — offroad-
+    # gate it and offer the reboot popup, like the pedal/radar toggles.
     self._add_toggle(
       NAPParamKeys.VISION_ACC,
       "Vision ACC (No Pedal)",
       "Follow openpilot's planned speed by nudging the stock cruise control set speed "
       "(vision-based lead following, no pedal hardware). Deceleration is regen-only — "
       "no friction brakes — and cruise only works above ~18 mph. You are the brakes. "
-      "Ignored when the pedal interceptor is enabled. Takes effect on the next drive.",
+      "Ignored when the pedal interceptor is enabled. Requires reboot.",
+      enabled=ui_state.is_offroad,
       needs_reboot=True,
     )
 
@@ -322,10 +323,10 @@ class NAPLayout(Widget):
 
     def on_toggle(state, k=param_key):
       self._params.put_bool(k, state)
-      # Onroad toggles (VISION_ACC and VISION_ACC_LIVE_TX are not offroad-
-      # gated) apply at the next ignition cycle — never offer a reboot
-      # while driving. VISION_ACC_LIVE_TX doesn't pass needs_reboot at all:
-      # carcontroller.py reads it live every tick.
+      # Reboot-requiring toggles are offroad-gated (enabled=ui_state.is_offroad),
+      # so this is_offroad guard is belt-and-suspenders — never offer a reboot
+      # while driving. VISION_ACC_LIVE_TX is the one onroad-toggleable param and
+      # doesn't pass needs_reboot at all (carcontroller reads it live).
       if needs_reboot and ui_state.is_offroad():
         self._show_reboot_modal()
 
