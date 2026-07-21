@@ -1068,11 +1068,12 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
   # (it CANCELed the stock CC for a decel decision it can't carry out — no
   # friction brakes). warningSoft is clearly different from the soft
   # `disengage` beep; Priority.HIGH masks the teslaCCDisengaged that follows
-  # ~200 ms later when the DI actually drops.
+  # ~200 ms later when the DI actually drops. Short title (<=16 chars) so the
+  # mici renders it big; the subtitle (<=18 chars) draws as a second line.
   EventName.visionAccBrakeHandoff: {
     ET.WARNING: Alert(
-      "Vision ACC Can't Slow — Brake",
-      "",
+      "Brake",
+      "ACC can't slow",
       AlertStatus.userPrompt, AlertSize.small,
       Priority.HIGH, VisualAlert.none, AudibleAlert.warningSoft, 2.),
   },
