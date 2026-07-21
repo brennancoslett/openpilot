@@ -1064,6 +1064,19 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
     ET.PERMANENT: NormalPermanentAlert("Arm Stock Cruise to Enable Speed Control"),
   },
 
+  # Distinct, urgent chime when vision ACC hands off braking to the driver
+  # (it CANCELed the stock CC for a decel decision it can't carry out — no
+  # friction brakes). warningSoft is clearly different from the soft
+  # `disengage` beep; Priority.HIGH masks the teslaCCDisengaged that follows
+  # ~200 ms later when the DI actually drops.
+  EventName.visionAccBrakeHandoff: {
+    ET.WARNING: Alert(
+      "Vision ACC Can't Slow — Brake",
+      "",
+      AlertStatus.userPrompt, AlertSize.small,
+      Priority.HIGH, VisualAlert.none, AudibleAlert.warningSoft, 2.),
+  },
+
   # Green light / lead departure chimes fire while disengaged or lateral-only,
   # so they must be ET.PERMANENT (the only alert type active in the disabled state).
   EventName.greenLightChime: {

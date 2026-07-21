@@ -109,6 +109,13 @@ class CarSpecificEvents:
           if nap_conf.use_pedal and not nap_conf.pedal_calibrated:
             events.add(EventName.pedalNotCalibrated)
 
+        # Vision ACC braking handoff — a distinct "ACC can't slow, you brake"
+        # chime when vision ACC CANCELs for a decel decision. Fires while
+        # op-long is still engaged (pcmCruise=False in vision-ACC mode), so it
+        # lives outside the pcmCruise branch above.
+        if getattr(CS, 'visionAccBrakeHandoff', False):
+          events.add(EventName.visionAccBrakeHandoff)
+
     return events
 
   def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState):
