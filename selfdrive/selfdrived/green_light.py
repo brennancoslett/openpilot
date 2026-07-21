@@ -71,6 +71,8 @@ class GreenLightHelper:
 
     self.allowed = False
     self.last_allowed = False
+    self.lead_allowed = False
+    self.last_lead_allowed = False
     self.has_lead = False
 
     self.lead_depart_arm_timer = 0
@@ -119,6 +121,15 @@ class GreenLightHelper:
     recent_moving = self.last_moving_frame != -1 and (self.frame - self.last_moving_frame) * DT_CTRL < 2.0
 
     self.allowed = not moving and not CS.gasPressed and not CC.longActive and not recent_moving
+    # Lead departure fires even while op-long is engaged. On this fork (vision
+    # ACC, pre-AP, no pedal) the car stays long-engaged while stopped behind a
+    # lead but cannot launch itself from a standstill (below min cruise, no
+    # creep), so a lead pulling away needs a "go" ding even when engaged —
+    # drive 00000007--6b36d9331b sat 12 s behind a lead at dRel 3.5 m with
+    # longActive=1 the whole time, so the not-longActive gate never opened.
+    # The not-moving gate still closes this once the car actually rolls. Green
+    # light keeps not-longActive: if op is doing longitudinal it pulls away itself.
+    self.lead_allowed = not moving and not CS.gasPressed and not recent_moving
 
     # Green Light Alert — the model "wants to go": predicted current speed rises
     # (primary), or the planned path endpoint opens up (fallback for models that
@@ -138,12 +149,12 @@ class GreenLightHelper:
 
     # Lead Departure Alert
     close_lead_valid = self.has_lead and lead_dRel < 8.0
-    if self.allowed and not self.last_allowed and close_lead_valid:
+    if self.lead_allowed and not self.last_lead_allowed and close_lead_valid:
       self.lead_depart_confirmed_lead = True
-    elif not self.allowed:
+    elif not self.lead_allowed:
       self.lead_depart_confirmed_lead = False
 
-    if self.allowed and self.lead_depart_confirmed_lead and close_lead_valid:
+    if self.lead_allowed and self.lead_depart_confirmed_lead and close_lead_valid:
       self.lead_depart_arm_timer += 1
       if self.lead_depart_arm_timer * DT_CTRL >= 1.0:
         self.lead_depart_armed = True
@@ -168,6 +179,7 @@ class GreenLightHelper:
       self.lead_depart_trigger_timer = 0
 
     self.last_allowed = self.allowed
+    self.last_lead_allowed = self.lead_allowed
 
     # Tuning visibility: periodic snapshot while stopped, plus an edge log on any trigger.
     if self.allowed and self.frame % int(LOG_PERIOD_S / DT_CTRL) == 0:
@@ -220,7 +232,7 @@ class GreenLightHelper:
     self.lead_depart_state, lead_depart_alert = self._update_state_machine(
       self.lead_depart_state,
       self.lead_depart_alert_enabled,
-      self.allowed and self.lead_depart_armed,
+      self.lead_allowed and self.lead_depart_armed,
       lead_depart_trigger,
     )
 
