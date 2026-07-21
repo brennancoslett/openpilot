@@ -25,6 +25,10 @@ ROAD_CAM = VisionStreamType.VISION_STREAM_ROAD
 WIDE_CAM = VisionStreamType.VISION_STREAM_WIDE_ROAD
 DEFAULT_DEVICE_CAMERA = DEVICE_CAMERAS["tici", "ar0231"]
 
+# In vision-ACC mode the MAX box (~162 px circle at top-left) is always drawn,
+# so drop the driver-monitoring icon this far below it so both are visible.
+DMOJI_VISION_ACC_Y_OFFSET = 170
+
 
 class BookmarkState(IntEnum):
   HIDDEN = 0
@@ -217,11 +221,19 @@ class AugmentedRoadView(CameraView):
 
     alert_to_render, not_animating_out = self._alert_renderer.will_render()
 
+    # DMoji and the MAX/set-speed box share the top-left corner, so normally the
+    # DMoji is hidden whenever the HUD draws top icons. Vision ACC keeps the MAX
+    # box up for the whole drive, which would hide the driver-monitoring icon
+    # permanently — so in that mode draw both, dropping the DMoji below the MAX
+    # box (~162 px circle) to avoid the overlap.
+    max_box_showing = self._hud_renderer.drawing_top_icons()
+    show_both = max_box_showing and ui_state.vision_acc_enabled
     # Hide DMoji when disengaged unless AlwaysOnDM is enabled
-    should_draw_dmoji = (not self._hud_renderer.drawing_top_icons() and ui_state.is_onroad() and
+    should_draw_dmoji = ((not max_box_showing or show_both) and ui_state.is_onroad() and
                          (ui_state.status != UIStatus.DISENGAGED or ui_state.always_on_dm))
     self._driver_state_renderer.set_should_draw(should_draw_dmoji)
-    self._driver_state_renderer.set_position(self._rect.x + 16, self._rect.y + 10)
+    dmoji_y = self._rect.y + 10 + (DMOJI_VISION_ACC_Y_OFFSET if show_both else 0)
+    self._driver_state_renderer.set_position(self._rect.x + 16, dmoji_y)
     self._driver_state_renderer.render()
 
     self._hud_renderer.set_can_draw_top_icons(alert_to_render is None)
