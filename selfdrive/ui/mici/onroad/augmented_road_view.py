@@ -25,9 +25,13 @@ ROAD_CAM = VisionStreamType.VISION_STREAM_ROAD
 WIDE_CAM = VisionStreamType.VISION_STREAM_WIDE_ROAD
 DEFAULT_DEVICE_CAMERA = DEVICE_CAMERAS["tici", "ar0231"]
 
-# In vision-ACC mode the MAX box (~162 px circle at top-left) is always drawn,
-# so drop the driver-monitoring icon this far below it so both are visible.
-DMOJI_VISION_ACC_Y_OFFSET = 170
+# In vision-ACC mode the MAX box owns the top-left, so the driver-monitoring
+# icon and steering wheel form a bottom-right cluster instead (DMoji then wheel
+# to its right). These place the 60x60 DMoji just left of the wheel + its
+# turn-intent ring, both bottom-aligned, within the content area (which is
+# SIDE_PANEL_WIDTH narrower on the right).
+DMOJI_BR_X_OFFSET = 168  # content-area right edge -> DMoji left edge
+DMOJI_BR_Y_OFFSET = 74   # content-area bottom -> DMoji top
 
 
 class BookmarkState(IntEnum):
@@ -223,17 +227,20 @@ class AugmentedRoadView(CameraView):
 
     # DMoji and the MAX/set-speed box share the top-left corner, so normally the
     # DMoji is hidden whenever the HUD draws top icons. Vision ACC keeps the MAX
-    # box up for the whole drive, which would hide the driver-monitoring icon
-    # permanently — so in that mode draw both, dropping the DMoji below the MAX
-    # box (~162 px circle) to avoid the overlap.
-    max_box_showing = self._hud_renderer.drawing_top_icons()
-    show_both = max_box_showing and ui_state.vision_acc_enabled
-    # Hide DMoji when disengaged unless AlwaysOnDM is enabled
-    should_draw_dmoji = ((not max_box_showing or show_both) and ui_state.is_onroad() and
+    # box up for the whole drive, so instead draw the DMoji in a bottom-right
+    # cluster (the steering wheel moves just to its right — see hud_renderer).
+    # Outside vision-ACC mode: stock top-left spot, hidden when top icons draw.
+    vision_acc = ui_state.vision_acc_enabled
+    should_draw_dmoji = ((vision_acc or not self._hud_renderer.drawing_top_icons()) and
+                         ui_state.is_onroad() and
                          (ui_state.status != UIStatus.DISENGAGED or ui_state.always_on_dm))
     self._driver_state_renderer.set_should_draw(should_draw_dmoji)
-    dmoji_y = self._rect.y + 10 + (DMOJI_VISION_ACC_Y_OFFSET if show_both else 0)
-    self._driver_state_renderer.set_position(self._rect.x + 16, dmoji_y)
+    if vision_acc:
+      cr = self._content_rect
+      self._driver_state_renderer.set_position(cr.x + cr.width - DMOJI_BR_X_OFFSET,
+                                               cr.y + cr.height - DMOJI_BR_Y_OFFSET)
+    else:
+      self._driver_state_renderer.set_position(self._rect.x + 16, self._rect.y + 10)
     self._driver_state_renderer.render()
 
     self._hud_renderer.set_can_draw_top_icons(alert_to_render is None)

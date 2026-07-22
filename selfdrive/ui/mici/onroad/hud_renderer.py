@@ -193,8 +193,13 @@ class HudRenderer(Widget):
         self._wheel_alpha_filter.update(255 * 0.9)
         self._wheel_y_filter.update(0)
 
-    # pos
-    pos_x = int(rect.x + 21 + wheel_txt.width / 2)
+    # pos — bottom-left normally; in vision-ACC mode move to the bottom-right so
+    # it sits just right of the driver-monitoring icon (which relocates there
+    # because the persistent MAX box owns the top-left; see augmented_road_view).
+    if ui_state.vision_acc_enabled:
+      pos_x = int(rect.x + rect.width - 21 - wheel_txt.width / 2)
+    else:
+      pos_x = int(rect.x + 21 + wheel_txt.width / 2)
     pos_y = int(rect.y + rect.height - 14 - wheel_txt.height / 2 + self._wheel_y_filter.x)
     rotation = -ui_state.sm['carState'].steeringAngleDeg
 
