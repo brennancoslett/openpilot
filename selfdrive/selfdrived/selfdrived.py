@@ -17,6 +17,7 @@ from openpilot.common.gps import get_gps_location_service
 from openpilot.selfdrive.car.car_specific import CarSpecificEvents
 from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
+from openpilot.selfdrive.selfdrived.green_light import GreenLightHelper
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
 from openpilot.selfdrive.selfdrived.preap_regen import RegenDemandCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
@@ -124,6 +125,7 @@ class SelfdriveD:
     self.rk = Ratekeeper(100, print_delay_threshold=None)
     self.prev_pedal_long_active = False
     self.preap_regen_demand = RegenDemandCheck()
+    self.green_light_helper = GreenLightHelper()
 
     # Determine startup event
     self.startup_event = EventName.startup if build_metadata.openpilot.comma_remote and build_metadata.tested_channel else EventName.startupMaster
@@ -218,6 +220,13 @@ class SelfdriveD:
           self.events.add(EventName.pedalMaxRegen)
       else:
         self.prev_pedal_long_active = False
+
+      # Green light / lead departure chimes (active unless op-long is controlling)
+      green_light, lead_depart = self.green_light_helper.update(CS, self.sm)
+      if green_light:
+        self.events.add(EventName.greenLightChime)
+      if lead_depart:
+        self.events.add(EventName.leadDepartChime)
 
       if self.CP.notCar:
         # wait for everything to init first
