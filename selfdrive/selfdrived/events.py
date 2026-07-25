@@ -1072,6 +1072,24 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       Priority.HIGH, VisualAlert.none, AudibleAlert.disengage, 3.0),
   },
 
+  # Green light / lead departure chimes fire while disengaged or lateral-only,
+  # so they must be ET.PERMANENT (the only alert type active in the disabled state).
+  EventName.greenLightChime: {
+    ET.PERMANENT: Alert(
+      "Green Light",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 2.),
+  },
+
+  EventName.leadDepartChime: {
+    ET.PERMANENT: Alert(
+      "Lead Departing",
+      "",
+      AlertStatus.normal, AlertSize.small,
+      Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 2.),
+  },
+
   EventName.userBookmark: {
     ET.PERMANENT: NormalPermanentAlert("Bookmark Saved", duration=1.5),
   },
