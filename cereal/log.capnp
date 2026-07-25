@@ -141,6 +141,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     teslaCCNotArmed @105;
     pedalNotCalibrated @106;
     pedalUnavailable @107;
+    greenLightChime @108;
+    leadDepartChime @109;
 
     soundsUnavailableDEPRECATED @47;
   }
