@@ -148,6 +148,15 @@ class NAPLayoutMici(NavScroller):
     ibooster_enabled = BigParamControl("ibooster enabled", NAPParamKeys.IBOOSTER_ENABLED)
     ibooster_enabled.set_enabled(False)
 
+    # ── Display ──────────────────────────────────────
+    # Pins the onroad MAX box up for the whole drive instead of letting it fade
+    # a moment after the set speed settles, and moves the driver-monitoring icon
+    # to the bottom-right so the two don't share the top-left corner. Mainly for
+    # no-pedal ACC, where the stock cluster's own readout blanks between spoofed
+    # presses. ui_state re-reads params every 5 s, so no reboot.
+    always_show_max_speed = BigParamControl("always show max speed",
+                                            NAPParamKeys.ALWAYS_SHOW_MAX_SPEED)
+
     # ── Advanced (locked on) ─────────────────────────
     force_pre_ap = BigParamControl("force pre-ap mode", NAPParamKeys.FORCE_PRE_AP)
     force_pre_ap.set_enabled(False)
@@ -190,6 +199,7 @@ class NAPLayoutMici(NavScroller):
       calibrate_radar_btn,
       test_radar_btn,
       ibooster_enabled,
+      always_show_max_speed,
       force_pre_ap,
       backup_epas_btn,
       flash_epas_btn,
