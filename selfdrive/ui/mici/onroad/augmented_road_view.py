@@ -25,6 +25,10 @@ ROAD_CAM = VisionStreamType.VISION_STREAM_ROAD
 WIDE_CAM = VisionStreamType.VISION_STREAM_WIDE_ROAD
 DEFAULT_DEVICE_CAMERA = DEVICE_CAMERAS["tici", "ar0231"]
 
+# Inset of the driver-monitoring icon from whichever corner it's drawn in.
+DMOJI_INSET_X = 16
+DMOJI_INSET_Y = 10
+
 
 class BookmarkState(IntEnum):
   HIDDEN = 0
@@ -217,11 +221,25 @@ class AugmentedRoadView(CameraView):
 
     alert_to_render, not_animating_out = self._alert_renderer.will_render()
 
-    # Hide DMoji when disengaged unless AlwaysOnDM is enabled
-    should_draw_dmoji = (not self._hud_renderer.drawing_top_icons() and ui_state.is_onroad() and
+    # DMoji and the MAX/set-speed box share the top-left corner, so normally the
+    # DMoji is hidden whenever the HUD draws top icons. "Always show max speed"
+    # keeps that box up for the whole drive, so instead draw the DMoji in the
+    # bottom-right corner — clear of the MAX box, of the bottom-left steering
+    # wheel, and of the centered torque bar (which reaches ~130 px either side
+    # of center). With the setting off: stock top-left spot, hidden when top
+    # icons draw.
+    max_speed_pinned = ui_state.always_show_max_speed
+    should_draw_dmoji = ((max_speed_pinned or not self._hud_renderer.drawing_top_icons()) and
+                         ui_state.is_onroad() and
                          (ui_state.status != UIStatus.DISENGAGED or ui_state.always_on_dm))
     self._driver_state_renderer.set_should_draw(should_draw_dmoji)
-    self._driver_state_renderer.set_position(self._rect.x + 16, self._rect.y + 10)
+    dmoji = self._driver_state_renderer.rect
+    if max_speed_pinned:
+      cr = self._content_rect
+      self._driver_state_renderer.set_position(cr.x + cr.width - DMOJI_INSET_X - dmoji.width,
+                                               cr.y + cr.height - DMOJI_INSET_Y - dmoji.height)
+    else:
+      self._driver_state_renderer.set_position(self._rect.x + DMOJI_INSET_X, self._rect.y + DMOJI_INSET_Y)
     self._driver_state_renderer.render()
 
     self._hud_renderer.set_can_draw_top_icons(alert_to_render is None)
