@@ -107,6 +107,18 @@ class NAPLayout(Widget):
       needs_reboot=True,
     )
 
+    # Read at fingerprint time, so it needs a reboot to take effect — offroad-
+    # gate it and offer the reboot popup, like the pedal/radar toggles.
+    self._add_toggle(
+      NAPParamKeys.NO_PEDAL_ACC,
+      "No-pedal ACC",
+      "Follow openpilot's planned speed by nudging the stock cruise set speed, with no pedal hardware. " +
+      "Slowing is regen only, with no friction braking, and the stock cruise needs about 18 mph — you are the brakes. " +
+      "Ignored when the pedal interceptor is enabled. Requires reboot.",
+      enabled=ui_state.is_offroad,
+      needs_reboot=True,
+    )
+
     self._add_toggle(
       NAPParamKeys.ADAPTIVE_ACCEL,
       "Adaptive Accel Limits",
@@ -299,7 +311,10 @@ class NAPLayout(Widget):
 
     def on_toggle(state, k=param_key):
       self._params.put_bool(k, state)
-      if needs_reboot:
+      # Reboot-requiring toggles are offroad-gated (enabled=ui_state.is_offroad),
+      # so this is_offroad guard is belt-and-suspenders — never offer a reboot
+      # while driving.
+      if needs_reboot and ui_state.is_offroad():
         self._show_reboot_modal()
 
     item = toggle_item(

@@ -67,6 +67,14 @@ class NAPLayoutMici(NavScroller):
                                      toggle_callback=_reboot_on_toggle)
     pedal_enabled.set_enabled(ui_state.is_offroad)
 
+    # No-pedal ACC: stock-CC set-speed modulation via stalk spoof.
+    # Regen-only decel, works above ~18 mph only. Ignored when pedal enabled.
+    # Read at fingerprint time, so it needs a reboot to take effect — offroad-
+    # gate it and always offer the reboot popup, like the pedal/radar toggles.
+    no_pedal_acc = BigParamControl("no-pedal ACC", NAPParamKeys.NO_PEDAL_ACC,
+                                   toggle_callback=_reboot_on_toggle)
+    no_pedal_acc.set_enabled(ui_state.is_offroad)
+
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 
     # ── Pedal hardware ───────────────────────────────
@@ -164,6 +172,7 @@ class NAPLayoutMici(NavScroller):
 
     self._scroller.add_widgets([
       pedal_enabled,
+      no_pedal_acc,
       adaptive_accel,
       pedal_can_bus,
       pedal_calib_status,
