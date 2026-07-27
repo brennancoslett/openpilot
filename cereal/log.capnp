@@ -140,6 +140,7 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     pedalNotCalibrated @105;
     greenLightChime @106;
     leadDepartChime @107;
+    noPedalAccBrakeHandoff @108;
 
     soundsUnavailableDEPRECATED @47;
   }

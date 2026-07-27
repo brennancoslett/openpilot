@@ -119,6 +119,15 @@ class NAPLayout(Widget):
       needs_reboot=True,
     )
 
+    # Not offroad-gated and no reboot needed: car_specific.py reads this on the
+    # handoff edge itself, so it takes effect on the next hand-off.
+    self._add_toggle(
+      NAPParamKeys.NO_PEDAL_ACC_BRAKE_CHIME,
+      "No-pedal ACC Brake Chime",
+      "Play a distinct \"Brake — ACC can't slow\" alert when No-pedal ACC hands braking back to you, " +
+      "instead of the ordinary disengage beep. No effect unless No-pedal ACC is enabled.",
+    )
+
     self._add_toggle(
       NAPParamKeys.ADAPTIVE_ACCEL,
       "Adaptive Accel Limits",

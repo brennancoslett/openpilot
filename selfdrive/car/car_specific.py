@@ -109,6 +109,17 @@ class CarSpecificEvents:
           if nap_conf.use_pedal and not nap_conf.pedal_calibrated:
             events.add(EventName.pedalNotCalibrated)
 
+        # No-pedal ACC braking handoff — a distinct "ACC can't slow, you brake"
+        # chime when it CANCELs for a decel decision. Fires while op-long is
+        # still engaged (pcmCruise=False in no-pedal ACC mode), so it lives
+        # outside the pcmCruise branch above. Opt-in: without it the ordinary
+        # disengage beep still plays. The param read sits behind the one-shot
+        # edge, so it costs nothing on the other 99.9% of frames.
+        if getattr(CS, 'noPedalAccBrakeHandoff', False):
+          from opendbc.car.tesla.preap.nap_conf import nap_conf
+          if nap_conf.no_pedal_acc_brake_chime:
+            events.add(EventName.noPedalAccBrakeHandoff)
+
     return events
 
   def create_common_events(self, CS: structs.CarState, CS_prev: car.CarState):

@@ -75,6 +75,12 @@ class NAPLayoutMici(NavScroller):
                                    toggle_callback=_reboot_on_toggle)
     no_pedal_acc.set_enabled(ui_state.is_offroad)
 
+    # No reboot callback — car_specific.py reads this on the hand-off edge
+    # itself, so it takes effect on the next hand-off. Has no effect unless
+    # no_pedal_acc is also enabled.
+    no_pedal_acc_brake_chime = BigParamControl("no-pedal ACC brake chime",
+                                               NAPParamKeys.NO_PEDAL_ACC_BRAKE_CHIME)
+
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 
     # ── Pedal hardware ───────────────────────────────
@@ -173,6 +179,7 @@ class NAPLayoutMici(NavScroller):
     self._scroller.add_widgets([
       pedal_enabled,
       no_pedal_acc,
+      no_pedal_acc_brake_chime,
       adaptive_accel,
       pedal_can_bus,
       pedal_calib_status,
