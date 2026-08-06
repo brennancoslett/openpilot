@@ -4,8 +4,8 @@
   branch = master-nap
 [submodule "opendbc"]
   path = opendbc_repo
-  url = https://github.com/NotAutopilot/opendbc.git
-  branch = nap-dev
+  url = https://github.com/brennancoslett/opendbc.git
+  branch = nap-pedal-tune-dev
 [submodule "msgq"]
   path = msgq_repo
   url = ../../commaai/msgq.git
