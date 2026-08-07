@@ -200,7 +200,12 @@ class Car:
         preap_v_cruise_kph = float(CS.cruiseState.speed * CV.MS_TO_KPH)
         self.v_cruise_helper.v_cruise_kph_last = self.v_cruise_helper.v_cruise_kph
         self.v_cruise_helper.v_cruise_kph = preap_v_cruise_kph
-        self.v_cruise_helper.v_cruise_cluster_kph = preap_v_cruise_kph
+        # Cluster value tracks speedCluster, which carstate holds steady while a
+        # stalk burst resolves. The planner keeps following v_cruise_kph, so the
+        # MAX box stops flickering through the FSM's provisional steps without
+        # putting a stale target in front of the controller.
+        preap_cluster_kph = float(CS.cruiseState.speedCluster * CV.MS_TO_KPH)
+        self.v_cruise_helper.v_cruise_cluster_kph = preap_cluster_kph or preap_v_cruise_kph
     except Exception:
       # Fail-safe: never crash card due cruise-target selection logic.
       cloudlog.exception("Pre-AP software cruise target update failed, falling back to VCruiseHelper default")
