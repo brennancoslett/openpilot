@@ -108,6 +108,12 @@ class CarSpecificEvents:
             events.add(EventName.pedalNotCalibrated)
           if self.CP.openpilotLongitudinalControl and getattr(CS, 'pedalAuthorityFailed', False):
             events.add(EventName.pedalUnavailable)
+          # Map-speed stalk pull. Only meaningful in pedal mode, where NAP owns
+          # the set speed rather than reading the DI's.
+          if getattr(CS, 'mapSpeedApplied', False):
+            events.add(EventName.mapSpeedApplied)
+          if getattr(CS, 'mapSpeedUnavailable', False):
+            events.add(EventName.mapSpeedUnavailable)
 
     return events
 
