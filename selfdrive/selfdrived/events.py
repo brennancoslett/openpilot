@@ -254,6 +254,16 @@ def below_steer_speed_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.S
     Priority.LOW, VisualAlert.none, AudibleAlert.prompt, 0.4)
 
 
+def map_speed_applied_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
+  # Both numbers, because the point of the gesture is judging the map against
+  # the road: the limit is what the car claims, the set speed is what you got.
+  return Alert(
+    f"Max Set to {get_display_speed(CS.cruiseState.speed, metric)}",
+    f"Map Speed Limit {get_display_speed(CS.mapSpeedLimit, metric)}",
+    AlertStatus.normal, AlertSize.mid,
+    Priority.MID, VisualAlert.none, AudibleAlert.engage, 2.0)
+
+
 def calibration_incomplete_alert(CP: car.CarParams, CS: car.CarState, sm: messaging.SubMaster, metric: bool, soft_disable_time: int, personality) -> Alert:
   first_word = 'Recalibrating' if sm['liveCalibration'].calStatus == log.LiveCalibrationData.Status.recalibrating else 'Calibrating'
   return Alert(
@@ -1070,6 +1080,18 @@ EVENTS: dict[int, dict[str, Alert | AlertCallbackType]] = {
       "Speed Control Disabled",
       AlertStatus.userPrompt, AlertSize.mid,
       Priority.HIGH, VisualAlert.none, AudibleAlert.disengage, 3.0),
+  },
+
+  EventName.mapSpeedApplied: {
+    ET.WARNING: map_speed_applied_alert,
+  },
+
+  EventName.mapSpeedUnavailable: {
+    ET.WARNING: Alert(
+      "No Map Speed Limit",
+      "Set Speed Unchanged",
+      AlertStatus.userPrompt, AlertSize.mid,
+      Priority.MID, VisualAlert.none, AudibleAlert.refuse, 2.0),
   },
 
   # Green light / lead departure chimes fire while disengaged or lateral-only,

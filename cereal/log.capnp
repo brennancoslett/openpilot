@@ -141,6 +141,8 @@ struct OnroadEvent @0xc4fa6047f024e718 {
     pedalUnavailable @106;
     greenLightChime @107;
     leadDepartChime @108;
+    mapSpeedApplied @109;
+    mapSpeedUnavailable @110;
 
     soundsUnavailableDEPRECATED @47;
   }
