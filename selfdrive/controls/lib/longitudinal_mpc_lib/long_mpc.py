@@ -27,7 +27,7 @@ MPC_SOURCES = (LongitudinalPlanSource.lead0, LongitudinalPlanSource.lead1, Longi
 
 X_DIM = 3
 U_DIM = 1
-PARAM_DIM = 6
+PARAM_DIM = 7
 COST_E_DIM = 5
 COST_DIM = COST_E_DIM + 1
 CONSTR_DIM = 4
@@ -53,6 +53,11 @@ T_IDXS_LST = [index_function(idx, max_val=MAX_T, max_idx=N) for idx in range(N+1
 T_IDXS = np.array(T_IDXS_LST)
 FCW_IDXS = T_IDXS < 5.0
 T_DIFFS = np.diff(T_IDXS, prepend=[0.])
+# Deceleration the solver assumes it is willing to use when it sizes the gap it
+# wants behind an obstacle. Not a limit -- a_min is the limit -- but the rate
+# the desired distance is built from, so it decides how early a closing
+# approach starts shedding speed. Passed to the solver per solve: a car that
+# cannot brake this hard has to size its gaps with the rate it does have.
 COMFORT_BRAKE = 2.5
 STOP_DISTANCE = 6.0
 CRUISE_MIN_ACCEL = -1.2
@@ -84,11 +89,11 @@ def get_T_FOLLOW(personality=log.LongitudinalPersonality.standard, nap_follow_di
   else:
     raise NotImplementedError("Longitudinal personality not supported")
 
-def get_stopped_equivalence_factor(v_lead):
-  return (v_lead**2) / (2 * COMFORT_BRAKE)
+def get_stopped_equivalence_factor(v_lead, comfort_brake=COMFORT_BRAKE):
+  return (v_lead**2) / (2 * comfort_brake)
 
-def get_safe_obstacle_distance(v_ego, t_follow):
-  return (v_ego**2) / (2 * COMFORT_BRAKE) + t_follow * v_ego + STOP_DISTANCE
+def get_safe_obstacle_distance(v_ego, t_follow, comfort_brake=COMFORT_BRAKE):
+  return (v_ego**2) / (2 * comfort_brake) + t_follow * v_ego + STOP_DISTANCE
 
 def gen_long_model():
   model = AcadosModel()
@@ -115,7 +120,9 @@ def gen_long_model():
   a_prev = SX.sym('a_prev')
   lead_t_follow = SX.sym('lead_t_follow')
   lead_danger_factor = SX.sym('lead_danger_factor')
-  model.p = vertcat(a_min, a_max, x_obstacle, a_prev, lead_t_follow, lead_danger_factor)
+  comfort_brake = SX.sym('comfort_brake')
+  model.p = vertcat(a_min, a_max, x_obstacle, a_prev, lead_t_follow, lead_danger_factor,
+                    comfort_brake)
 
   # dynamics model
   f_expl = vertcat(v_ego, a_ego, j_ego)
@@ -150,11 +157,12 @@ def gen_long_ocp():
   a_prev = ocp.model.p[3]
   lead_t_follow = ocp.model.p[4]
   lead_danger_factor = ocp.model.p[5]
+  comfort_brake = ocp.model.p[6]
 
   ocp.cost.yref = np.zeros((COST_DIM, ))
   ocp.cost.yref_e = np.zeros((COST_E_DIM, ))
 
-  desired_dist_comfort = get_safe_obstacle_distance(v_ego, lead_t_follow)
+  desired_dist_comfort = get_safe_obstacle_distance(v_ego, lead_t_follow, comfort_brake)
 
   # The main cost in normal operation is how close you are to the "desired" distance
   # from an obstacle at every timestep. This obstacle can be a lead car
@@ -180,7 +188,8 @@ def gen_long_ocp():
 
   x0 = np.zeros(X_DIM)
   ocp.constraints.x0 = x0
-  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR])
+  ocp.parameter_values = np.array([-1.2, 1.2, 0.0, 0.0, get_T_FOLLOW(), LEAD_DANGER_FACTOR,
+                                   COMFORT_BRAKE])
 
 
   # We put all constraint cost weights to 0 and only set them at runtime
@@ -317,7 +326,20 @@ class LongitudinalMpc:
     lead_xv = self.extrapolate_lead(x_lead, v_lead, a_lead, a_lead_tau)
     return lead_xv
 
-  def update(self, radarstate, v_cruise, t_follow):
+  def update(self, radarstate, v_cruise, t_follow, a_min=ACCEL_MIN, comfort_brake=COMFORT_BRAKE):
+    """Solve one horizon.
+
+    a_min is the deceleration the solver is allowed to plan for. It defaults to
+    the generic ACCEL_MIN, but a car whose actuator cannot reach it has to say
+    so: planning against braking authority the car does not have allows the
+    solver to defer braking to a point it can never recover from, and the
+    request is clipped away before the car ever sees it.
+
+    comfort_brake is the rate the desired gap behind an obstacle is sized from.
+    It has to move with a_min: sizing gaps for a 2.5 m/s2 stop while only being
+    able to brake at 1.5 leaves the solver asking for a distance it can only
+    hold by braking harder than it is allowed to.
+    """
     v_ego = self.x0[1]
     self.status = radarstate.leadOne.status or radarstate.leadTwo.status
 
@@ -327,8 +349,8 @@ class LongitudinalMpc:
     # To estimate a safe distance from a moving lead, we calculate how much stopping
     # distance that lead needs as a minimum. We can add that to the current distance
     # and then treat that as a stopped car/obstacle at this new distance.
-    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1])
-    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1])
+    lead_0_obstacle = lead_xv_0[:,0] + get_stopped_equivalence_factor(lead_xv_0[:,1], comfort_brake)
+    lead_1_obstacle = lead_xv_1[:,0] + get_stopped_equivalence_factor(lead_xv_1[:,1], comfort_brake)
 
     # Fake an obstacle for cruise, this ensures smooth acceleration to set speed
     # when the leads are no factor.
@@ -336,7 +358,7 @@ class LongitudinalMpc:
     # TODO does this make sense when max_a is negative?
     v_upper = v_ego + (T_IDXS * CRUISE_MAX_ACCEL * 1.05)
     v_cruise_clipped = np.clip(v_cruise * np.ones(N+1), v_lower, v_upper)
-    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow)
+    cruise_obstacle = np.cumsum(T_DIFFS * v_cruise_clipped) + get_safe_obstacle_distance(v_cruise_clipped, t_follow, comfort_brake)
 
     x_obstacles = np.column_stack([lead_0_obstacle, lead_1_obstacle, cruise_obstacle])
     self.source = MPC_SOURCES[np.argmin(x_obstacles[0])]
@@ -346,12 +368,13 @@ class LongitudinalMpc:
       self.solver.set(i, "yref", self.yref[i])
     self.solver.set(N, "yref", self.yref[N][:COST_E_DIM])
 
-    self.params[:,0] = ACCEL_MIN
+    self.params[:,0] = a_min
     self.params[:,1] = ACCEL_MAX
     self.params[:,2] = np.min(x_obstacles, axis=1)
     self.params[:,3] = np.copy(self.a_prev)
     self.params[:,4] = t_follow
     self.params[:,5] = LEAD_DANGER_FACTOR
+    self.params[:,6] = comfort_brake
 
     self.run()
     if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
