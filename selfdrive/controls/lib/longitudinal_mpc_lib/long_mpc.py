@@ -377,11 +377,30 @@ class LongitudinalMpc:
     self.params[:,6] = comfort_brake
 
     self.run()
-    if (np.any(lead_xv_0[FCW_IDXS,0] - self.x_sol[FCW_IDXS,0] < CRASH_DISTANCE) and
+
+    # Forward-collision warning asks whether a crash is still avoidable, not
+    # what openpilot alone is going to do. Where a_min is held above ACCEL_MIN
+    # because the car's actuator cannot reach it, the solved trajectory
+    # overshoots leads the driver could still stop for, and warning on it turns
+    # every ordinary approach into an alarm. Measure against the brakes that
+    # exist instead; the actuator's own shortfall is the regen prompt's job.
+    ego_x = self.x_sol[:,0] if a_min <= ACCEL_MIN else self.full_authority_positions()
+    if (np.any(lead_xv_0[FCW_IDXS,0] - ego_x[FCW_IDXS] < CRASH_DISTANCE) and
             radarstate.leadOne.modelProb > 0.9):
       self.crash_cnt += 1
     else:
       self.crash_cnt = 0
+
+  def full_authority_positions(self):
+    """Where the car ends up over the horizon braking at ACCEL_MIN from now.
+
+    Deliberately the best case: immediate full braking, no reaction time. That
+    is the point -- it answers "is this still avoidable", so anything it cannot
+    clear is a real emergency rather than a limit of the plan.
+    """
+    x_ego, v_ego = self.x0[0], self.x0[1]
+    v_traj = np.clip(v_ego + ACCEL_MIN * T_IDXS, 0.0, None)
+    return x_ego + np.cumsum(T_DIFFS * v_traj)
 
   def run(self):
     for i in range(N+1):
