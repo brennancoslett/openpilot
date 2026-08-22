@@ -19,6 +19,7 @@ from openpilot.selfdrive.locationd.helpers import PoseCalibrator, Pose
 from openpilot.selfdrive.selfdrived.events import Events, ET
 from openpilot.selfdrive.selfdrived.green_light import GreenLightHelper
 from openpilot.selfdrive.selfdrived.helpers import ExcessiveActuationCheck
+from openpilot.selfdrive.selfdrived.preap_pedal_cruise import PedalCruiseStatus
 from openpilot.selfdrive.selfdrived.preap_regen import RegenDemandCheck
 from openpilot.selfdrive.selfdrived.state import StateMachine
 from openpilot.selfdrive.selfdrived.alertmanager import AlertManager, set_offroad_alert
@@ -123,7 +124,7 @@ class SelfdriveD:
     self.recalibrating_seen = False
     self.state_machine = StateMachine()
     self.rk = Ratekeeper(100, print_delay_threshold=None)
-    self.prev_pedal_long_active = False
+    self.preap_pedal_cruise = PedalCruiseStatus()
     self.preap_regen_demand = RegenDemandCheck()
     self.green_light_helper = GreenLightHelper()
 
@@ -200,11 +201,19 @@ class SelfdriveD:
           and self.CP.openpilotLongitudinalControl
           and not self.CP.pcmCruise):
         pedal_long_active = bool(CS.cruiseState.enabled and getattr(CS, 'pedalLongActive', False))
-        if pedal_long_active and not self.prev_pedal_long_active:
+        # The chimes report the engagement, which a driver accelerator override
+        # does not end -- see PedalCruiseStatus. The regen checks below stay on
+        # the raw flag: those are about actuation, and during an override the
+        # car is not actuating.
+        pedal_cruise_engaged, pedal_cruise_disengaged = self.preap_pedal_cruise.update(
+          pedal_long_active=pedal_long_active,
+          cruise_enabled=bool(CS.cruiseState.enabled),
+          long_override=self.events.contains(ET.OVERRIDE_LONGITUDINAL),
+        )
+        if pedal_cruise_engaged:
           self.events.add(EventName.pedalCruiseEnabled)
-        elif self.prev_pedal_long_active and not pedal_long_active:
+        elif pedal_cruise_disengaged:
           self.events.add(EventName.pedalCruiseDisabled)
-        self.prev_pedal_long_active = pedal_long_active
 
         # Two shapes of "regen is not enough, add friction brake": the carstate
         # flag covers weak regen under-delivering an in-envelope request; the
@@ -219,7 +228,7 @@ class SelfdriveD:
         if getattr(CS, 'pedalMaxRegen', False) or regen_demand_overflow:
           self.events.add(EventName.pedalMaxRegen)
       else:
-        self.prev_pedal_long_active = False
+        self.preap_pedal_cruise.reset()
 
       # Green light / lead departure chimes (active unless op-long is controlling)
       green_light, lead_depart = self.green_light_helper.update(CS, self.sm)
