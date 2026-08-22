@@ -367,6 +367,15 @@ class BigParamControl(BigToggle):
   def refresh(self):
     self.set_checked(self.params.get_bool(self.param, False))
 
+  def show_event(self):
+    # The panel that owns this control is built once at UI start and reused for
+    # every visit, so without this the toggle keeps displaying whatever the
+    # param said at boot. A settings screen that reports stale state is worse
+    # than one that reports none: it was read as confirmation that pedal mode
+    # was on while the car was running without it.
+    super().show_event()
+    self.refresh()
+
 
 # TODO: param control base class
 class BigCircleParamControl(BigCircleToggle):
@@ -383,3 +392,7 @@ class BigCircleParamControl(BigCircleToggle):
 
   def refresh(self):
     self.set_checked(self.params.get_bool(self._param, False))
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
