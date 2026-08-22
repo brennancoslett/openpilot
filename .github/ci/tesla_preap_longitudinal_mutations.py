@@ -42,7 +42,8 @@ MUTATIONS = (
     source_path="selfdrive/controls/lib/longitudinal_planner.py",
     original=(
       b"        cap_strength = get_preap_follow_cap_strength(" +
-      b"v_ego, lead.dRel, lead.vLead, self.t_follow)\n"
+      b"v_ego, lead.dRel, lead.vLead, self.t_follow,\n" +
+      b"                                                    self.plan_comfort_brake)\n"
     ),
     replacement=b"        cap_strength = 0.0\n",
     test_nodes=(

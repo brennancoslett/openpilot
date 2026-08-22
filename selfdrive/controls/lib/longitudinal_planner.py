@@ -10,6 +10,7 @@ from openpilot.common.realtime import DT_MDL
 from openpilot.selfdrive.modeld.constants import ModelConstants
 from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
+  COMFORT_BRAKE,
   LongitudinalMpc,
   LongitudinalPlanSource,
   get_safe_obstacle_distance,
@@ -24,6 +25,31 @@ from openpilot.common.swaglog import cloudlog
 
 A_CRUISE_MAX_VALS = [1.6, 1.2, 0.8, 0.6]
 A_CRUISE_MAX_BP = [0., 10.0, 25., 40.]
+
+# Pre-AP regen envelope: imported lazily to avoid circular deps
+_preap_regen_max_cache = None
+def _get_preap_regen_max():
+  """The only deceleration a pedal-mode Pre-AP Tesla has.
+
+  There is no friction brake under openpilot on this car: every deceleration is
+  regen through the Comma Pedal, and VirtualDAS clips the effort at REGEN_MAX.
+  The MPC was solving against the generic ACCEL_MIN of -3.5 m/s2, more than
+  twice the authority the car has, and sizing the gap it wants from a 2.5 m/s2
+  COMFORT_BRAKE it can never reach. Both numbers decide when an approach starts
+  shedding speed, so both were telling the solver it could afford to wait: it
+  deferred braking to roughly a third of the distance it actually needs, then
+  the request was clipped on the way out. Deceleration that starts late and
+  then cannot deliver is what the driver feels.
+  """
+  global _preap_regen_max_cache
+  if _preap_regen_max_cache is None:
+    try:
+      from opendbc.car.tesla.preap.nap_conf import REGEN_MAX
+      _preap_regen_max_cache = float(REGEN_MAX)
+    except ImportError:
+      _preap_regen_max_cache = ACCEL_MIN
+  return _preap_regen_max_cache
+
 
 # Pre-AP follow-mode accel cap: imported lazily to avoid circular deps
 _preap_follow_cache = None
@@ -41,9 +67,11 @@ def _get_preap_follow_limit(v_ego):
   return float(np.interp(v_ego, bp, v))
 
 
-def get_preap_follow_cap_strength(v_ego, lead_distance, lead_speed, t_follow):
-  lead_obstacle_distance = lead_distance + get_stopped_equivalence_factor(max(lead_speed, 0.0))
-  safe_obstacle_distance = get_safe_obstacle_distance(v_ego, t_follow)
+def get_preap_follow_cap_strength(v_ego, lead_distance, lead_speed, t_follow,
+                                  comfort_brake=COMFORT_BRAKE):
+  lead_obstacle_distance = lead_distance + get_stopped_equivalence_factor(max(lead_speed, 0.0),
+                                                                         comfort_brake)
+  safe_obstacle_distance = get_safe_obstacle_distance(v_ego, t_follow, comfort_brake)
   equivalent_ratio = lead_obstacle_distance / max(safe_obstacle_distance, 1.0)
   return float(np.clip(1.0 - (equivalent_ratio - 1.2) / 0.3, 0.0, 1.0))
 
@@ -94,9 +122,23 @@ class LongitudinalPlanner:
     self.t_follow = get_T_FOLLOW(nap_follow_dist=self.active_nap_follow_dist)
     self._frame = 0
 
+    self.plan_accel_min = _get_preap_regen_max() if self._is_preap else ACCEL_MIN
+    # The comfort brake is one knob doing two jobs: the term it scales,
+    # (v_ego^2 - v_lead^2) / (2 * comfort_brake), is zero at a matched lead
+    # speed and grows with closing speed, so lowering it starts braking earlier
+    # and sits further back on every approach by exactly the same amount. There
+    # is no setting that buys one without the other.
+    #
+    # All three were driven -- the regen envelope, the generic 2.5, and 2.0
+    # between them -- and the envelope is the one that was kept: the earlier,
+    # gentler approach is worth the room it needs. Which makes the geometry
+    # self-consistent as well, since it is now sized from the same deceleration
+    # plan_accel_min allows the plan to ask for.
+    self.plan_comfort_brake = -self.plan_accel_min if self._is_preap else COMFORT_BRAKE
+
     self.a_desired = init_a
     self.v_desired_filter = FirstOrderFilter(init_v, 2.0, self.dt)
-    self.prev_accel_clip = [ACCEL_MIN, ACCEL_MAX]
+    self.prev_accel_clip = [self.plan_accel_min, ACCEL_MAX]
     self.output_a_target = 0.0
     self.output_should_stop = False
 
@@ -151,7 +193,7 @@ class LongitudinalPlanner:
     # No change cost when user is controlling the speed, or when standstill
     prev_accel_constraint = not (reset_state or sm['carState'].standstill)
 
-    accel_clip = [ACCEL_MIN, get_max_accel(v_ego)]
+    accel_clip = [self.plan_accel_min, get_max_accel(v_ego)]
     steer_angle_without_offset = sm['carState'].steeringAngleDeg - sm['liveParameters'].angleOffsetDeg
     accel_clip = limit_accel_in_turns(v_ego, steer_angle_without_offset, accel_clip, self.CP)
 
@@ -187,14 +229,16 @@ class LongitudinalPlanner:
       follow_limit = _get_preap_follow_limit(v_ego)
       if follow_limit is not None:
         lead = sm['radarState'].leadOne
-        cap_strength = get_preap_follow_cap_strength(v_ego, lead.dRel, lead.vLead, self.t_follow)
+        cap_strength = get_preap_follow_cap_strength(v_ego, lead.dRel, lead.vLead, self.t_follow,
+                                                    self.plan_comfort_brake)
         if cap_strength > 0:
           blended = accel_clip[1] * (1.0 - cap_strength) + follow_limit * cap_strength
           accel_clip[1] = min(accel_clip[1], blended)
 
     self.mpc.set_weights(prev_accel_constraint, personality=sm['selfdriveState'].personality)
     self.mpc.set_cur_state(self.v_desired_filter.x, self.a_desired)
-    self.mpc.update(sm['radarState'], v_cruise, t_follow=self.t_follow)
+    self.mpc.update(sm['radarState'], v_cruise, t_follow=self.t_follow,
+                    a_min=self.plan_accel_min, comfort_brake=self.plan_comfort_brake)
 
     self.v_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.v_solution)
     self.a_desired_trajectory = np.interp(CONTROL_N_T_IDX, T_IDXS_MPC, self.mpc.a_solution)
