@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from cereal import car, log, messaging
+from opendbc.car.interfaces import ACCEL_MIN
 from opendbc.car.tesla.preap import virtual_das
 from opendbc.car.tesla.preap.constants import PEDAL_LONG_K_BP, PEDAL_LONG_KI_V, PEDAL_LONG_KP_V
 from opendbc.car.tesla.preap.virtual_das import GRAVITY, VirtualDAS
@@ -12,6 +13,8 @@ from openpilot.selfdrive.controls.lib.longcontrol import LongCtrlState
 from openpilot.selfdrive.controls.lib.longcontrol import LongControl
 from openpilot.selfdrive.controls.lib import longitudinal_planner
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
+  COMFORT_BRAKE,
+  PARAM_DIM,
   LongitudinalPlanSource,
   T_IDXS,
   get_safe_obstacle_distance,
@@ -88,11 +91,13 @@ class _ConstantAccelerationMpc:
     self.v_solution = speed_mps + acceleration_mps2 * T_IDXS
     self.a_solution = np.full(len(T_IDXS), acceleration_mps2)
     self.j_solution = np.zeros(len(T_IDXS) - 1)
-    self.params = np.zeros((len(T_IDXS), 6))
+    self.params = np.zeros((len(T_IDXS), PARAM_DIM))
     self.source = LongitudinalPlanSource.cruise
     self.crash_cnt = 0
     self.solve_time = 0.0
     self.captured_t_follow = None
+    self.captured_a_min = None
+    self.captured_comfort_brake = None
 
   @staticmethod
   def set_weights(prev_accel_constraint, personality):
@@ -102,9 +107,14 @@ class _ConstantAccelerationMpc:
   def set_cur_state(speed_mps, acceleration_mps2):
     pass
 
-  def update(self, radar_state, cruise_speed_mps, t_follow):
+  def update(self, radar_state, cruise_speed_mps, t_follow, a_min=ACCEL_MIN,
+             comfort_brake=COMFORT_BRAKE):
     self.captured_t_follow = t_follow
+    self.captured_a_min = a_min
+    self.captured_comfort_brake = comfort_brake
+    self.params[:, 0] = a_min
     self.params[:, 4] = t_follow
+    self.params[:, 6] = comfort_brake
 
 
 def _make_preap_params():
@@ -155,10 +165,10 @@ def _make_planner_inputs(speed_mps):
   })
 
 
-def _physical_lead_distance(v_ego, v_lead, t_follow, obstacle_ratio):
-  safe_obstacle_distance = get_safe_obstacle_distance(v_ego, t_follow)
+def _physical_lead_distance(v_ego, v_lead, t_follow, obstacle_ratio, comfort_brake=COMFORT_BRAKE):
+  safe_obstacle_distance = get_safe_obstacle_distance(v_ego, t_follow, comfort_brake)
   lead_obstacle_distance = obstacle_ratio * safe_obstacle_distance
-  return lead_obstacle_distance - get_stopped_equivalence_factor(max(v_lead, 0.0))
+  return lead_obstacle_distance - get_stopped_equivalence_factor(max(v_lead, 0.0), comfort_brake)
 
 
 def _full_loop_pitch(elapsed_s):
@@ -357,7 +367,11 @@ def test_planner_adaptive_cap_changes_the_delivered_acceleration_for_unequal_spe
   inputs = _make_planner_inputs(speed_mps)
   lead = inputs["radarState"].leadOne
   lead.status = True
-  lead.dRel = _physical_lead_distance(speed_mps, lead_speed_mps, t_follow, obstacle_ratio)
+  # The gap is built from the comfort brake the planner itself uses, so the cap
+  # is measured against the distance it is actually asking for.
+  comfort_brake = planner.plan_comfort_brake
+  lead.dRel = _physical_lead_distance(speed_mps, lead_speed_mps, t_follow, obstacle_ratio,
+                                      comfort_brake)
   lead.vLead = lead_speed_mps
 
   for _ in range(32):
@@ -370,6 +384,7 @@ def test_planner_adaptive_cap_changes_the_delivered_acceleration_for_unequal_spe
     lead.dRel,
     lead_speed_mps,
     t_follow,
+    comfort_brake,
   )
   expected_adaptive_limit = open_road_limit * (1.0 - cap_strength) + follow_limit * cap_strength
 
@@ -463,14 +478,25 @@ def test_nap_follow_settings_control_monotonic_maneuver_gaps():
     for t_follow in NAP_FOLLOW_TIMES_S
   ]
 
-  assert steady_gaps == pytest.approx(expected_gaps, abs=0.5)
+  # The tolerance carries a residual the closed form does not. The two
+  # comfort-brake terms -- the one in the desired distance and the one in the
+  # stopped-equivalence factor -- cancel only where ego and lead speeds match
+  # exactly, which they do not at every step of the MPC horizon. What is left
+  # scales inversely with the comfort brake, so the Pre-AP envelope value
+  # doubles it to about one meter. It is uniform across all seven settings and
+  # the spacing the dial promises survives, which is what this measures.
+  assert steady_gaps == pytest.approx(expected_gaps, abs=1.25)
   assert np.all(np.diff(steady_gaps) > 0.0)
 
 
 def test_max_follow_setting_recovers_from_a_close_lead_without_closing_first():
+  # Long enough to settle, not to snapshot the approach. The equilibrium gap is
+  # t_follow * v + STOP_DISTANCE whatever the comfort brake is, but the rate the
+  # car opens the gap moves with it, and 60 s caught this mid-convergence at
+  # 52.9 m.
   maneuver = Maneuver(
     "max follow recovery",
-    duration=60.0,
+    duration=100.0,
     initial_speed=FOLLOW_TEST_SPEED_MPS,
     lead_relevancy=True,
     initial_distance_lead=20.0,
