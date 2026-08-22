@@ -26,12 +26,30 @@ class FontSizes:
   speed_unit: int = 66
   max_speed: int = 36
   set_speed: int = 112
+  sign_limit: int = 44
 
 
 @dataclass(frozen=True)
 class Colors:
   WHITE = rl.WHITE
   WHITE_TRANSLUCENT = rl.Color(255, 255, 255, 200)
+
+
+# Speed limit sign, top right. White face, black rule, and the number on its
+# own — a full-size sign with SPEED LIMIT on it owned the whole right quadrant
+# and ran into the driver-monitoring icon. At this size it reads as a badge and
+# still says the one thing it is for. It is a readout: nothing downstream reads
+# it, and it never touches the set speed.
+SIGN_W = 72
+SIGN_H = 72
+SIGN_MARGIN = 20
+SIGN_ROUNDNESS = 0.18
+SIGN_BORDER = 5
+# A held value is one the MCU has stopped reporting and carstate is carrying
+# across a gap in the map database. Without a caption to say so, it gets two
+# cues instead: the whole sign dims, and the rule goes grey.
+SIGN_HELD_ALPHA = 0.55
+SIGN_HELD_RULE = 105
 
 
 FONT_SIZES = FontSizes()
@@ -126,6 +144,10 @@ class HudRenderer(Widget):
     self._wheel_y_filter = FirstOrderFilter(0, 0.1, 1 / gui_app.target_fps)
 
     self._set_speed_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
+    self._sign_alpha_filter = FirstOrderFilter(0.0, 0.1, 1 / gui_app.target_fps)
+
+    self.speed_limit: float = 0.0
+    self.speed_limit_held: bool = False
 
   def set_wheel_critical_icon(self, critical: bool):
     """Set the wheel icon to critical or normal state."""
@@ -163,6 +185,10 @@ class HudRenderer(Widget):
     self.is_cruise_set = 0 < self.set_speed < SET_SPEED_NA
     self.is_cruise_available = self.set_speed != -1
 
+    limit_ms = getattr(car_state, 'mapSpeedLimitDisplay', 0.0)
+    self.speed_limit = limit_ms * (CV.MS_TO_KPH if ui_state.is_metric else CV.MS_TO_MPH)
+    self.speed_limit_held = bool(getattr(car_state, 'mapSpeedLimitHeld', False))
+
     v_ego_cluster = car_state.vEgoCluster
     self.v_ego_cluster_seen = self.v_ego_cluster_seen or v_ego_cluster != 0.0
     v_ego = v_ego_cluster if self.v_ego_cluster_seen else car_state.vEgo
@@ -177,6 +203,7 @@ class HudRenderer(Widget):
     if self.is_cruise_set:
       self._draw_set_speed(rect)
 
+    self._draw_speed_limit(rect)
     self._draw_steering_wheel(rect)
 
   def _draw_steering_wheel(self, rect: rl.Rectangle) -> None:
@@ -268,6 +295,39 @@ class HudRenderer(Widget):
       FONT_SIZES.max_speed,
       0,
       max_color,
+    )
+
+  def _draw_speed_limit(self, rect: rl.Rectangle) -> None:
+    """Draw the MCU's speed limit as a sign in the top right."""
+    showing = self.speed_limit > 0.0 and self._can_draw_top_icons
+    alpha = self._sign_alpha_filter.update(showing)
+    if alpha < 1e-2:
+      return
+
+    if self.speed_limit_held:
+      alpha *= SIGN_HELD_ALPHA
+
+    x = rect.x + rect.width - SIGN_MARGIN - SIGN_W
+    y = rect.y + SIGN_MARGIN
+    sign_rect = rl.Rectangle(x, y, SIGN_W, SIGN_H)
+
+    face = rl.Color(255, 255, 255, int(255 * alpha))
+    rule_value = SIGN_HELD_RULE if self.speed_limit_held else 0
+    rule = rl.Color(rule_value, rule_value, rule_value, int(255 * alpha))
+    ink = rl.Color(0, 0, 0, int(255 * alpha))
+
+    rl.draw_rectangle_rounded(sign_rect, SIGN_ROUNDNESS, 10, face)
+    rl.draw_rectangle_rounded_lines_ex(sign_rect, SIGN_ROUNDNESS, 10, SIGN_BORDER, rule)
+
+    limit_text = str(round(self.speed_limit))
+    size = measure_text_cached(self._font_bold, limit_text, FONT_SIZES.sign_limit)
+    rl.draw_text_ex(
+      self._font_bold,
+      limit_text,
+      rl.Vector2(x + (SIGN_W - size.x) / 2, y + (SIGN_H - size.y) / 2),
+      FONT_SIZES.sign_limit,
+      0,
+      ink,
     )
 
   def _draw_current_speed(self, rect: rl.Rectangle) -> None:
