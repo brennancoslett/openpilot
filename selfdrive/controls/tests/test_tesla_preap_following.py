@@ -82,6 +82,8 @@ class _MutablePlannerParams:
     return self.nap_follow_dist
 
   def get_bool(self, key):
+    if key == "DynamicExperimentalControl":
+      return False
     assert key == "NAPAdaptiveAccel"
     return self.adaptive_accel
 
