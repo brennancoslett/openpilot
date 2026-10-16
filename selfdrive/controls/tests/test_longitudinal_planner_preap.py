@@ -195,3 +195,42 @@ def test_comfort_brake_sets_how_early_an_approach_starts_braking():
 
   assert generic > 0.0
   assert gentle >= generic + 10.0
+
+
+class _StubDec:
+  def __init__(self, active, mode):
+    self._active = active
+    self._mode = mode
+
+  def update(self, sm):
+    pass
+
+  def active(self):
+    return self._active
+
+  def mode(self):
+    return self._mode
+
+
+@pytest.mark.parametrize(("dec_active", "dec_mode", "model_binds"), [
+  (False, "acc", True),  # DEC off: experimental mode behaves exactly as upstream
+  (True, "blended", True),
+  (True, "acc", False),
+])
+def test_dynamic_experimental_control_gates_the_model_ceiling(dec_active, dec_mode, model_binds):
+  # Experimental mode is min(e2e, mpc). Below the set speed on an open road the
+  # model asks for nothing and the MPC asks to accelerate; DEC in ACC mode is
+  # what keeps the model from holding the car at a speed of its own choosing.
+  planner = LongitudinalPlanner(make_preap_params(), init_v=19.0)
+  planner.dec = _StubDec(dec_active, dec_mode)
+  inputs = make_planner_inputs(v_ego=19.0, v_cruise=21.0, pitch=0.0, throttle_probability=1.0)
+  inputs["selfdriveState"].experimentalMode = True
+  inputs["modelV2"].action.desiredAcceleration = 0.0
+
+  for _ in range(40):
+    planner.update(inputs)
+
+  if model_binds:
+    assert planner.output_a_target <= 0.0 + 1e-6
+  else:
+    assert planner.output_a_target > 0.2

@@ -19,6 +19,7 @@ from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import (
 )
 from openpilot.selfdrive.controls.lib.longitudinal_mpc_lib.long_mpc import T_IDXS as T_IDXS_MPC
 from openpilot.selfdrive.controls.lib.drive_helpers import CONTROL_N, get_accel_from_plan
+from openpilot.selfdrive.controls.lib.dynamic_experimental_control import DynamicExperimentalController
 from openpilot.selfdrive.car.cruise import V_CRUISE_MAX, V_CRUISE_UNSET
 from openpilot.common.params import Params
 from openpilot.common.swaglog import cloudlog
@@ -146,6 +147,14 @@ class LongitudinalPlanner:
     self.a_desired_trajectory = np.zeros(CONTROL_N)
     self.j_desired_trajectory = np.zeros(CONTROL_N)
 
+    self.dec = DynamicExperimentalController(CP, self.mpc, self._params)
+
+  def is_e2e(self, sm):
+    experimental_mode = sm['selfdriveState'].experimentalMode
+    if not self.dec.active():
+      return experimental_mode
+    return experimental_mode and self.dec.mode() == 'blended'
+
   @staticmethod
   def parse_model(model_msg):
     if (len(model_msg.position.x) == ModelConstants.IDX_N and
@@ -260,7 +269,8 @@ class LongitudinalPlanner:
     output_a_target_e2e = sm['modelV2'].action.desiredAcceleration
     output_should_stop_e2e = sm['modelV2'].action.shouldStop
 
-    if sm['selfdriveState'].experimentalMode:
+    self.dec.update(sm)
+    if self.is_e2e(sm):
       output_a_target = min(output_a_target_e2e, output_a_target_mpc)
       self.output_should_stop = output_should_stop_e2e or output_should_stop_mpc
       if output_a_target < output_a_target_mpc:
@@ -298,5 +308,7 @@ class LongitudinalPlanner:
     longitudinalPlan.allowThrottle = bool(self.allow_throttle)
     longitudinalPlan.napFollowDistance = self.active_nap_follow_dist or 0
     longitudinalPlan.tFollow = self.t_follow
+    longitudinalPlan.decActive = self.dec.active()
+    longitudinalPlan.decBlended = self.dec.mode() == 'blended'
 
     pm.send('longitudinalPlan', plan_send)

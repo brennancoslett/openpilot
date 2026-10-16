@@ -1174,6 +1174,8 @@ struct LongitudinalPlan @0xe00b5b3eba12876c {
   allowBrake @39: Bool;
   napFollowDistance @40 :UInt8;
   tFollow @41 :Float32;
+  decActive @42 :Bool;   # Dynamic Experimental Control is deciding when e2e may bind
+  decBlended @43 :Bool;  # DEC currently lets the e2e model bind the plan
 
 
   solverExecutionTime @35 :Float32;

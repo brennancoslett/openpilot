@@ -22,7 +22,7 @@ class _ManeuverParams:
 
   @staticmethod
   def get_bool(key):
-    assert key == "NAPAdaptiveAccel"
+    assert key in ("NAPAdaptiveAccel", "DynamicExperimentalControl")
     return False
 
 
