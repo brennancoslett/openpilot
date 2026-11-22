@@ -15,6 +15,8 @@ from openpilot.selfdrive.ui.mici.layouts.settings.nap_script import launch_scrip
 from openpilot.selfdrive.ui.layouts.settings.nap_content import (
   BACKUP_EPAS_INSTRUCTIONS,
   FLASH_EPAS_INSTRUCTIONS,
+  FOLLOW_DISTANCE_MAX,
+  FOLLOW_DISTANCE_MIN,
   PEDAL_CAN_BUS_VALUES,
   RADAR_OFFSET_MAX,
   RADAR_OFFSET_MIN,
@@ -23,7 +25,7 @@ from openpilot.selfdrive.ui.layouts.settings.nap_content import (
 )
 from openpilot.selfdrive.ui.radar.radar_view import RadarMonitorDialog
 from openpilot.selfdrive.ui.ui_state import ui_state
-from opendbc.car.tesla.preap.nap_params import NAPParamKeys
+from opendbc.car.tesla.preap.nap_params import DEFAULTS, NAPParamKeys
 
 
 def _reboot_dialog() -> None:
@@ -47,6 +49,54 @@ def _confirm_then_flash(slider_title: str, runner_title: str, instructions: str,
     launch_script(runner_title, instructions, module)
   icon = gui_app.texture("icons_mici/buttons/button_circle_red.png", 180, 180)
   gui_app.push_widget(BigConfirmationDialog(slider_title, icon, confirm, red=True))
+
+
+class FollowDistanceButton(BigButton):
+  """Steps NAPFollowDistance through 1..7 on each tap, wrapping 7 -> 1.
+
+  BigMultiToggle can't hold this: it stacks one 35 px pill per option inside
+  a 180 px button, and seven pills overflow it. The value is re-read whenever
+  the panel is shown because the cruise stalk's distance dial writes the same
+  param (opendbc preap/carstate.py).
+  """
+  def __init__(self):
+    super().__init__("follow distance", "")
+    self._params = Params()
+    self.set_click_callback(self._step)
+    self.refresh()
+
+  def _current(self) -> int | None:
+    value = self._params.get(NAPParamKeys.FOLLOW_DISTANCE, return_default=True)
+    return value if isinstance(value, int) and FOLLOW_DISTANCE_MIN <= value <= FOLLOW_DISTANCE_MAX else None
+
+  @staticmethod
+  def label(value: int | None) -> str:
+    # Out of range, the planner ignores the param and follows the driving
+    # personality's gap instead, so say that rather than show a number.
+    if value is None:
+      return "personality"
+    if value == FOLLOW_DISTANCE_MIN:
+      return f"{value} (closest)"
+    if value == FOLLOW_DISTANCE_MAX:
+      return f"{value} (farthest)"
+    return str(value)
+
+  def _step(self):
+    current = self._current()
+    if current is None:
+      # Recover to the default gap, not straight to the tightest one.
+      nxt = DEFAULTS[NAPParamKeys.FOLLOW_DISTANCE]
+    else:
+      nxt = FOLLOW_DISTANCE_MIN if current >= FOLLOW_DISTANCE_MAX else current + 1
+    self._params.put(NAPParamKeys.FOLLOW_DISTANCE, nxt)
+    self.refresh()
+
+  def refresh(self):
+    self.set_value(self.label(self._current()))
+
+  def show_event(self):
+    super().show_event()
+    self.refresh()
 
 
 class RadarSettingsLayoutMici(NavScroller):
@@ -202,6 +252,10 @@ class NAPLayoutMici(NavScroller):
 
     adaptive_accel = BigParamControl("adaptive accel limits", NAPParamKeys.ADAPTIVE_ACCEL)
 
+    # The planner re-reads NAPFollowDistance every second, so this applies
+    # mid-drive without a reboot.
+    follow_distance = FollowDistanceButton()
+
     # ── Pedal hardware ───────────────────────────────
     # default_value=2 matches NAPPedalCanBus declared default in params_keys.h
     # and the runtime fallback ("any nonzero is bus 2"). If the param is set
@@ -275,6 +329,7 @@ class NAPLayoutMici(NavScroller):
     self._scroller.add_widgets([
       pedal_enabled,
       adaptive_accel,
+      follow_distance,
       pedal_can_bus,
       pedal_calib_status,
       calibrate_pedal_btn,
